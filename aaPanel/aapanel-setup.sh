@@ -179,15 +179,6 @@ while true; do
     read -rsp "Input aaPanel password: " PANEL_PASS
     echo ""
 
-    read -rsp "Confirm aaPanel password: " PANEL_PASS2
-    echo ""
-
-    if [ "$PANEL_PASS" != "$PANEL_PASS2" ]; then
-        echo -e "${RED}[ERROR] Password confirmation does not match.${NC}"
-        echo ""
-        continue
-    fi
-
     if ! validate_password "$PANEL_PASS"; then
         echo -e "${RED}[ERROR] Password does not meet the requirements.${NC}"
         echo "Requirements:"
@@ -196,6 +187,15 @@ while true; do
         echo " - Lowercase letter"
         echo " - Number"
         echo " - password cannot contain special characters except for . and ,"
+        echo ""
+        continue
+    fi
+    
+    read -rsp "Confirm aaPanel password: " PANEL_PASS2
+    echo ""
+
+    if [ "$PANEL_PASS" != "$PANEL_PASS2" ]; then
+        echo -e "${RED}[ERROR] Password confirmation does not match.${NC}"
         echo ""
         continue
     fi
