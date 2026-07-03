@@ -144,16 +144,6 @@ check_dependency() {
     fi
 }
 
-is_valid_email() {
-    local email="$1"
-    [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
-}
-
-is_valid_domain() {
-    local domain="$1"
-    [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
-}
-
 # ==============================
 # HEADER
 # ==============================
@@ -179,56 +169,18 @@ echo -e "${YELLOW}--------------------------------------------${NC}"
 
 echo -e "${CYAN}[INFO]${NC} Please enter your N8N configuration"
 echo ""
-echo -e "${CYAN}[INFO]${NC} Jika Mengunakan HTTPS maka Domainnya Harus Valid dan dapat diakses publik (A/AAAA record mengarah ke server)"
 
 DEFAULT_FQDN=$(hostname -f 2>/dev/null || hostname)
-USE_HTTPS=0
 
 while true; do
-    read -p "Enable HTTPS with Let's Encrypt? (y/N): " HTTPS_CONFIRM
-    HTTPS_CONFIRM=${HTTPS_CONFIRM:-n}
+    read -p "FQDN [${DEFAULT_FQDN}]          : " DOMAIN
+    DOMAIN=${DOMAIN:-$DEFAULT_FQDN}
 
-    if [[ "$HTTPS_CONFIRM" =~ ^[Yy]$ ]]; then
-        USE_HTTPS=1
-
-        while true; do
-            read -p "FQDN [${DEFAULT_FQDN}] (harus valid untuk Let's Encrypt): " DOMAIN
-            DOMAIN=${DOMAIN:-$DEFAULT_FQDN}
-
-            if [ -z "$DOMAIN" ]; then
-                echo -e "${RED}[ERROR]${NC} FQDN cannot be empty"
-                continue
-            fi
-
-            if ! is_valid_domain "$DOMAIN"; then
-                echo -e "${RED}[ERROR]${NC} Domain tidak valid. Gunakan nama domain lengkap yang dapat diakses publik (A/AAAA record mengarah ke server)."
-                continue
-            fi
-
-            break
-        done
-
-        while true; do
-            read -p "Email untuk Let's Encrypt : " EMAIL
-
-            if [ -z "$EMAIL" ]; then
-                echo -e "${RED}[ERROR]${NC} Email tidak boleh kosong"
-                continue
-            fi
-
-            if ! is_valid_email "$EMAIL"; then
-                echo -e "${RED}[ERROR]${NC} Email tidak valid"
-                continue
-            fi
-
-            break
-        done
-    else
-        USE_HTTPS=0
-        DOMAIN="$DEFAULT_FQDN"
+    if [ -n "$DOMAIN" ]; then
+        break
     fi
 
-    break
+    echo -e "${RED}[ERROR]${NC} FQDN cannot be empty"
 done
 
 echo ""
@@ -384,13 +336,6 @@ DEPENDENCIES=(
     "openssl:openssl"
 )
 
-if [ "$USE_HTTPS" -eq 1 ]; then
-    DEPENDENCIES+=(
-        "nginx:nginx"
-        "certbot:certbot"
-    )
-fi
-
 for dep in "${DEPENDENCIES[@]}"; do
     CMD="${dep%%:*}"
     PKG="${dep##*:}"
@@ -467,6 +412,7 @@ POSTGRES_NON_ROOT_USER=$POSTGRES_NON_ROOT_USER
 POSTGRES_NON_ROOT_PASSWORD=$POSTGRES_NON_ROOT_PASSWORD
 RUNNERS_AUTH_TOKEN=$RUNNERS_AUTH_TOKEN
 FQDN=$DOMAIN
+IP=$IP
 EOF
 
 echo -e "${GREEN}[OK]${NC} Config ready"
@@ -476,7 +422,7 @@ echo -e "${GREEN}[OK]${NC} Config ready"
 # ==============================
 echo ""
 echo -e "${YELLOW}--------------------------------------------${NC}"
-echo -e "${YELLOW}[STEP 4/5] Starting N8N${NC}"
+echo -e "${YELLOW}[STEP 4/5] Starting containers${NC}"
 echo -e "${YELLOW}--------------------------------------------${NC}"
 
 set +e
@@ -574,75 +520,6 @@ wait $!
 
 echo -e "${GREEN}[OK]${NC} n8n running"
 
-if [ "$USE_HTTPS" -eq 1 ]; then
-    mkdir -p /var/www/letsencrypt
-
-    cat <<EOF >/etc/nginx/conf.d/n8n.conf
-server {
-    listen 80;
-    server_name $DOMAIN;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/letsencrypt;
-    }
-
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-EOF
-
-    run_step "Starting nginx" bash -c "
-        systemctl enable nginx || true
-        systemctl restart nginx || service nginx restart || true
-    "
-
-    run_step "Requesting Let's Encrypt certificate for $DOMAIN" \
-        certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" \
-        --non-interactive --agree-tos --email "$EMAIL"
-
-    cat <<EOF >/etc/nginx/conf.d/n8n.conf
-server {
-    listen 80;
-    server_name $DOMAIN;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/letsencrypt;
-    }
-
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
-
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
-    location / {
-        proxy_pass http://127.0.0.1:5678;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-    }
-}
-EOF
-
-    run_step "Reloading nginx" bash -c "
-        nginx -t
-        systemctl reload nginx || service nginx reload || true
-    "
-
-    echo -e "${GREEN}[OK]${NC} HTTPS sudah aktif untuk $DOMAIN"
-fi
-
 echo ""
 echo -e "${CYAN}[INFO]${NC} Container status"
 echo ""
@@ -664,10 +541,10 @@ echo -e "${BLUE}======================================${NC}"
 
 echo ""
 echo -e "${CYAN}ACCESS:${NC}"
-if [ "$USE_HTTPS" -eq 1 ]; then
-    echo "HTTPS  : https://$DOMAIN"
-fi
-echo "HTTP   : http://$IP:5678"
+echo "IP     : http://$IP:5678"
+echo "FQDN   : http://$DOMAIN"
+echo "Untuk mengakses N8N melalui Domain, Silakan Jalankan perintah berikut di terminal:"
+echo -e "${YELLOW}bash /root/https.sh${NC}"
 
 echo ""
 echo -e "${CYAN}TOKEN:${NC}"
