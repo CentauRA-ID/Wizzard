@@ -144,6 +144,16 @@ check_dependency() {
     fi
 }
 
+is_valid_email() {
+    local email="$1"
+    [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
+}
+
+is_valid_domain() {
+    local domain="$1"
+    [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
+}
+
 # ==============================
 # HEADER
 # ==============================
@@ -169,18 +179,56 @@ echo -e "${YELLOW}--------------------------------------------${NC}"
 
 echo -e "${CYAN}[INFO]${NC} Please enter your N8N configuration"
 echo ""
+echo -e "${CYAN}[INFO]${NC} Jika Mengunakan HTTPS maka Domainnya Harus Valid dan dapat diakses publik (A/AAAA record mengarah ke server)"
 
 DEFAULT_FQDN=$(hostname -f 2>/dev/null || hostname)
+USE_HTTPS=0
 
 while true; do
-    read -p "FQDN [${DEFAULT_FQDN}]          : " DOMAIN
-    DOMAIN=${DOMAIN:-$DEFAULT_FQDN}
+    read -p "Enable HTTPS with Let's Encrypt? (y/N): " HTTPS_CONFIRM
+    HTTPS_CONFIRM=${HTTPS_CONFIRM:-n}
 
-    if [ -n "$DOMAIN" ]; then
-        break
+    if [[ "$HTTPS_CONFIRM" =~ ^[Yy]$ ]]; then
+        USE_HTTPS=1
+
+        while true; do
+            read -p "FQDN [${DEFAULT_FQDN}] (harus valid untuk Let's Encrypt): " DOMAIN
+            DOMAIN=${DOMAIN:-$DEFAULT_FQDN}
+
+            if [ -z "$DOMAIN" ]; then
+                echo -e "${RED}[ERROR]${NC} FQDN cannot be empty"
+                continue
+            fi
+
+            if ! is_valid_domain "$DOMAIN"; then
+                echo -e "${RED}[ERROR]${NC} Domain tidak valid. Gunakan nama domain lengkap yang dapat diakses publik (A/AAAA record mengarah ke server)."
+                continue
+            fi
+
+            break
+        done
+
+        while true; do
+            read -p "Email untuk Let's Encrypt : " EMAIL
+
+            if [ -z "$EMAIL" ]; then
+                echo -e "${RED}[ERROR]${NC} Email tidak boleh kosong"
+                continue
+            fi
+
+            if ! is_valid_email "$EMAIL"; then
+                echo -e "${RED}[ERROR]${NC} Email tidak valid"
+                continue
+            fi
+
+            break
+        done
+    else
+        USE_HTTPS=0
+        DOMAIN="$DEFAULT_FQDN"
     fi
 
-    echo -e "${RED}[ERROR]${NC} FQDN cannot be empty"
+    break
 done
 
 echo ""
@@ -335,6 +383,13 @@ DEPENDENCIES=(
     "git:git"
     "openssl:openssl"
 )
+
+if [ "$USE_HTTPS" -eq 1 ]; then
+    DEPENDENCIES+=(
+        "nginx:nginx"
+        "certbot:certbot"
+    )
+fi
 
 for dep in "${DEPENDENCIES[@]}"; do
     CMD="${dep%%:*}"
@@ -540,8 +595,10 @@ echo -e "${BLUE}======================================${NC}"
 
 echo ""
 echo -e "${CYAN}ACCESS:${NC}"
-echo "FQDN   : http://$DOMAIN"
-echo "IP     : http://$IP:5678"
+if [ "$USE_HTTPS" -eq 1 ]; then
+    echo "HTTPS  : https://$DOMAIN"
+fi
+echo "HTTP   : http://$IP:5678"
 
 echo ""
 echo -e "${CYAN}TOKEN:${NC}"
