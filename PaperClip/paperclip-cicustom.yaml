@@ -1,0 +1,71 @@
+#cloud-config
+package_update: false
+package_upgrade: false
+
+write_files:
+  - path: /root/setup-vm.sh
+    permissions: '0755'
+    encoding: b64
+    content: |
+      BASE64_CODE_PAPERCLIP-SETUP.SH
+
+  - path: /etc/profile.d/paperclip-first-login.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+
+      [ "$USER" != "root" ] && return
+      [ -f /root/.paperclip_installed ] && return
+
+      clear
+      echo "======================================"
+      echo "      PAPERCLIP FIRST LOGIN INSTALLER"
+      echo "======================================"
+      echo ""
+
+      echo "[INFO] Menjalankan installer..."
+
+      # 🚨 BLOCKING (WAJIB)
+      bash /root/setup-vm.sh
+      STATUS=$?
+
+      if [ $STATUS -ne 0 ]; then
+          echo "[ERROR] Installer gagal!"
+          echo "[INFO] Cek log di /var/log/"
+          return
+      fi
+
+      for i in {1..60}; do
+          RUNNING=$(docker ps --format '{{.Names}}' | grep -c paperclip || true)
+
+          if [ "$RUNNING" -ge 1 ]; then
+              echo ""
+              echo "[OK] paperclip sudah running"
+              break
+          fi
+
+          echo ""
+          echo "[WAIT] paperclip belum ready ($i/60)"
+          sleep 2
+      done
+
+      if ! ss -lnt | grep -q ":3000"; then
+          echo "[WARNING] Port 3000 belum terbuka!"
+          return
+      fi
+
+      if ! ss -lnt | grep -q ":3001"; then
+          echo "[WARNING] Port 3001 belum terbuka!"
+          return
+      fi
+      
+      # ✅ MARK DONE (SETELAH BENAR2 SELESAI)
+      touch /root/.paperclip_installed
+
+      # ✅ CLEANUP DI AKHIR (INI YANG SEBELUMNYA SALAH POSISI)
+      rm -f /root/setup-vm.sh
+      rm -f /root/get-docker.sh
+      rm -f /root/paperclip-installer.sh
+      
+      echo ""
+      echo "[INFO] Installation paperclip finished"
