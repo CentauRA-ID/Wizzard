@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-URL_SCRIPT="https://raw.githubusercontent.com/KnowLedZ/Wizzard/main/uptimekuma-wizzard.sh"
+URL_SCRIPT="https://raw.githubusercontent.com/CentauRA-ID/Wizzard/main/Uptime%20Kuma/uptimekuma-wizzard.sh"
 
 echo "======================================"
 echo "  UPTIME KUMA BOOTSTRAP INITIALIZER"

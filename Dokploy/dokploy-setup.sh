@@ -204,7 +204,7 @@ echo -e "${YELLOW}[STEP 2/3] Install Dokploy${NC}"
 echo -e "${YELLOW}----------------------------------------------------${NC}"
 
 (
-    wget -q -O /root/install.sh https://raw.githubusercontent.com/KnowLedZ/Wizzard/main/dokploy-install.sh \
+    wget -q -O /root/install.sh https://dokploy.com/install.sh \
         >> "$LOG_FILE" 2>&1
 
     chmod +x /root/install.sh
