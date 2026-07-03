@@ -476,7 +476,7 @@ echo -e "${GREEN}[OK]${NC} Config ready"
 # ==============================
 echo ""
 echo -e "${YELLOW}--------------------------------------------${NC}"
-echo -e "${YELLOW}[STEP 4/5] Starting containers${NC}"
+echo -e "${YELLOW}[STEP 4/5] Starting N8N${NC}"
 echo -e "${YELLOW}--------------------------------------------${NC}"
 
 set +e
@@ -573,6 +573,75 @@ spinner $! "Waiting n8n running"
 wait $!
 
 echo -e "${GREEN}[OK]${NC} n8n running"
+
+if [ "$USE_HTTPS" -eq 1 ]; then
+    mkdir -p /var/www/letsencrypt
+
+    cat <<EOF >/etc/nginx/conf.d/n8n.conf
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+EOF
+
+    run_step "Starting nginx" bash -c "
+        systemctl enable nginx || true
+        systemctl restart nginx || service nginx restart || true
+    "
+
+    run_step "Requesting Let's Encrypt certificate for $DOMAIN" \
+        certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" \
+        --non-interactive --agree-tos --email "$EMAIL"
+
+    cat <<EOF >/etc/nginx/conf.d/n8n.conf
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name $DOMAIN;
+
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://127.0.0.1:5678;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+EOF
+
+    run_step "Reloading nginx" bash -c "
+        nginx -t
+        systemctl reload nginx || service nginx reload || true
+    "
+
+    echo -e "${GREEN}[OK]${NC} HTTPS sudah aktif untuk $DOMAIN"
+fi
 
 echo ""
 echo -e "${CYAN}[INFO]${NC} Container status"
