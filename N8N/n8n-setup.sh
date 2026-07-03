@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-URL_SCRIPT="https://raw.githubusercontent.com/KnowLedZ/Wizzard/main/n8n-wizzard.sh"
+URL_SCRIPT="https://raw.githubusercontent.com/CentauRA-ID/Wizzard/main/N8N/n8n-wizzard.sh"
 
 echo "======================================"
 echo "     N8N BOOTSTRAP INITIALIZER"
