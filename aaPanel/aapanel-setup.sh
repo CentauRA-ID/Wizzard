@@ -74,6 +74,7 @@ validate_password() {
     local pass="$1"
 
     [ ${#pass} -ge 8 ] || return 1
+    [[ "$pass" =~ ^[A-Za-z0-9.,]+$ ]] || return 1
     [[ "$pass" =~ [A-Z] ]] || return 1
     [[ "$pass" =~ [a-z] ]] || return 1
     [[ "$pass" =~ [0-9] ]] || return 1
@@ -188,12 +189,13 @@ while true; do
     fi
 
     if ! validate_password "$PANEL_PASS"; then
-        echo -e "${RED}[ERROR] Weak password.${NC}"
+        echo -e "${RED}[ERROR] Password does not meet the requirements.${NC}"
         echo "Requirements:"
         echo " - Minimum 8 characters"
         echo " - Uppercase letter"
         echo " - Lowercase letter"
         echo " - Number"
+        echo " - password cannot contain special characters except for . and ,"
         echo ""
         continue
     fi
