@@ -278,6 +278,7 @@ fix_apt_lock
 (
     apt update -y >> "$LOG_FILE" 2>&1
     apt install -y wget curl sudo >> "$LOG_FILE" 2>&1
+    groupdel admin > "$LOG_FILE" 2>&1
 ) &
 spinner $! "Installing dependencies" "Dependencies installed successfully"
 
